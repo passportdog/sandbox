@@ -1,5 +1,3 @@
-"use client";
-
 import { AppState, Attachment, Message, Run, Thread } from "@/lib/types";
 import { uid } from "@/lib/utils";
 
