@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DbJob, DbPodInstance, DbTemplate, DbJobEvent } from "@/lib/db-types";
 
-// ---------- Jobs ----------
+// ─── Jobs ───
 
 export function useJobs() {
   const [jobs, setJobs] = useState<DbJob[]>([]);
@@ -18,43 +18,48 @@ export function useJobs() {
 
   useEffect(() => {
     fetchJobs();
-
-    // Realtime subscription
-    const channel = supabase
+    const ch = supabase
       .channel("jobs-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "jobs" }, () => {
-        fetchJobs();
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "jobs" }, () => fetchJobs())
       .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(ch); };
   }, [fetchJobs]);
 
-  const createJob = async (inputText: string) => {
+  const createJob = async (inputText: string, idempotencyKey?: string) => {
     const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input_text: inputText }),
+      body: JSON.stringify({ input_text: inputText, idempotency_key: idempotencyKey }),
     });
     const job = await res.json();
-    if (res.ok) setJobs((prev) => [job, ...prev]);
-    return job;
+    if (res.ok) setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
+    return { data: job, ok: res.ok, status: res.status };
   };
 
   const planJob = async (jobId: string) => {
     const res = await fetch(`/api/jobs/${jobId}/plan`, { method: "POST" });
-    return res.json();
+    return { data: await res.json(), ok: res.ok, status: res.status };
   };
 
   const executeJob = async (jobId: string) => {
     const res = await fetch(`/api/jobs/${jobId}/execute`, { method: "POST" });
-    return res.json();
+    return { data: await res.json(), ok: res.ok, status: res.status };
   };
 
-  return { jobs, loading, createJob, planJob, executeJob, refetch: fetchJobs };
+  const retryJob = async (jobId: string) => {
+    const res = await fetch(`/api/jobs/${jobId}/retry`, { method: "POST" });
+    return { data: await res.json(), ok: res.ok, status: res.status };
+  };
+
+  const cancelJob = async (jobId: string) => {
+    const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+    return { data: await res.json(), ok: res.ok, status: res.status };
+  };
+
+  return { jobs, loading, createJob, planJob, executeJob, retryJob, cancelJob, refetch: fetchJobs };
 }
 
-// ---------- Job Detail ----------
+// ─── Job Detail ───
 
 export function useJobDetail(jobId: string | null) {
   const [job, setJob] = useState<DbJob | null>(null);
@@ -73,23 +78,23 @@ export function useJobDetail(jobId: string | null) {
   }, [jobId]);
 
   useEffect(() => {
+    setLoading(true);
     fetchJob();
-
     if (!jobId) return;
 
-    const channel = supabase
+    const ch = supabase
       .channel(`job-${jobId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "jobs", filter: `id=eq.${jobId}` }, () => fetchJob())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "job_events", filter: `job_id=eq.${jobId}` }, () => fetchJob())
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(ch); };
   }, [jobId, fetchJob]);
 
   return { job, events, loading, refetch: fetchJob };
 }
 
-// ---------- Pods ----------
+// ─── Pods ───
 
 export function usePods() {
   const [pods, setPods] = useState<DbPodInstance[]>([]);
@@ -103,13 +108,11 @@ export function usePods() {
 
   useEffect(() => {
     fetchPods();
-
-    const channel = supabase
+    const ch = supabase
       .channel("pods-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "pod_instances" }, () => fetchPods())
       .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(ch); };
   }, [fetchPods]);
 
   const createPod = async (options?: { gpu?: string; name?: string; image?: string }) => {
@@ -136,7 +139,7 @@ export function usePods() {
   return { pods, loading, createPod, podAction, refetch: fetchPods };
 }
 
-// ---------- Templates ----------
+// ─── Templates ───
 
 export function useTemplates() {
   const [templates, setTemplates] = useState<DbTemplate[]>([]);
