@@ -2,10 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
+body {
+  font-family: 'Geist', sans-serif;
 }
 
-body {
-  @apply bg-background text-slate-800 antialiased;
+.font-geist-mono {
+  font-family: 'Geist Mono', monospace !important;
+}
+
+/* Smooth scrolling & Minimal Scrollbar */
+html { scroll-behavior: smooth; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e5e5e5; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #d4d4d4; }
+
+textarea { resize: none; }
+
+/* Ambient Background Container */
+#canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent 100%);
 }
