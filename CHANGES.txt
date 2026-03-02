@@ -1,0 +1,33 @@
+=== NEW/CHANGED FILES ===
+
+--- Core Config ---
+app/layout.tsx (CHANGED - Geist font, body classes)
+app/globals.css (CHANGED - Geist, scrollbar, canvas container styles)
+app/page.tsx (CHANGED - imports Dashboard)
+tailwind.config.ts (CHANGED - Geist font family)
+package.json (CHANGED - added @supabase/supabase-js, @iconify/react, three)
+
+--- New Frontend Components ---
+components/Dashboard.tsx (NEW - main UI matching HTML reference)
+components/AmbientBackground.tsx (NEW - Three.js torus knot)
+
+--- Backend Libs ---
+lib/supabase.ts (NEW)
+lib/runpod.ts (NEW)
+lib/comfyui.ts (NEW)
+lib/civitai.ts (NEW)
+lib/openrouter.ts (NEW)
+lib/hooks.ts (NEW - React hooks with Supabase Realtime)
+lib/db-types.ts (NEW)
+
+--- API Routes ---
+app/api/jobs/route.ts (NEW)
+app/api/jobs/[id]/route.ts (NEW)
+app/api/jobs/[id]/plan/route.ts (NEW)
+app/api/jobs/[id]/execute/route.ts (NEW)
+app/api/pods/route.ts (NEW)
+app/api/templates/route.ts (NEW)
+
+--- Database ---
+supabase/migrations/001_initial_schema.sql (NEW)
+.env.local.example (NEW)
