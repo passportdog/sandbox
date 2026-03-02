@@ -1,5 +1,5 @@
-import { SandboxApp } from "@/components/SandboxApp";
+import { Dashboard } from "@/components/Dashboard";
 
 export default function HomePage() {
-  return <SandboxApp />;
+  return <Dashboard />;
 }
