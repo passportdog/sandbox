@@ -29,6 +29,9 @@ function StepTimeline({ events }: { events: DbJobEvent[] }) {
         const isDone = key.includes("completed") || key === "job.completed";
         const isLast = i === events.length - 1;
 
+        // Safely extract error string from unknown event_data to avoid ReactNode type errors
+        const errorMsg = ev.event_data?.error != null ? String(ev.event_data.error) : null;
+
         return (
           <div key={ev.id} className="flex gap-3 items-start">
             <div className="flex flex-col items-center w-5 shrink-0">
@@ -66,9 +69,9 @@ function StepTimeline({ events }: { events: DbJobEvent[] }) {
                   </span>
                 )}
               </div>
-              {Boolean(ev.event_data?.error) && (
+              {errorMsg !== null && (
                 <p className="text-[11px] text-red-400 font-geist-mono mt-0.5 break-all">
-                  {String(ev.event_data.error)}
+                  {errorMsg}
                 </p>
               )}
             </div>
