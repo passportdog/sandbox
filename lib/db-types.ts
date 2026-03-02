@@ -75,11 +75,48 @@ export interface DbTemplate {
   slug: string;
   description: string | null;
   category: string | null;
+  workflow_json: Record<string, unknown>;
+  raw_workflow: Record<string, unknown> | null;
   required_models: string[];
   required_node_packs: string[];
   param_schema: Record<string, unknown> | null;
+  source: string | null;
+  source_url: string | null;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
+
+export interface DbModel {
+  id: string;
+  name: string;
+  source: string;
+  source_id: string | null;
+  download_url: string | null;
+  target_folder: string;
+  filename: string;
+  sha256: string | null;
+  size_bytes: number | null;
+  format: string;
+  base_model: string | null;
+  model_type: string | null;
+  preview_url: string | null;
+  is_cached: boolean;
+  download_status: string;
+  download_error: string | null;
+  civitai_model_id: number | null;
+  civitai_version_id: number | null;
+  virus_scan_status: string | null;
+  pickle_scan_status: string | null;
+  created_at: string;
+}
+
+export const MODEL_STATUS_CONFIG: Record<string, { color: string; label: string }> = {
+  pending:      { color: "bg-neutral-400", label: "Pending" },
+  downloading:  { color: "bg-blue-400 animate-pulse", label: "Downloading..." },
+  completed:    { color: "bg-emerald-400", label: "Cached" },
+  failed:       { color: "bg-red-400", label: "Failed" },
+};
 
 // ─── Status display config ───
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { DbJob, DbPodInstance, DbTemplate, DbJobEvent } from "@/lib/db-types";
+import type { DbJob, DbPodInstance, DbTemplate, DbJobEvent, DbModel } from "@/lib/db-types";
 
 // ─── Jobs ───
 
