@@ -137,6 +137,41 @@ export function getComfyUrl(pod: Pod): string | null {
   return `https://${pod.id}-8188.proxy.runpod.net`;
 }
 
+// ---------- Run a command on a pod via exec endpoint ----------
+
+export async function runCommand(podId: string, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const execUrl = `https://${podId}-22.proxy.runpod.net/exec`;
+
+  // Try proxy exec endpoint first; fall back to RunPod's run endpoint
+  try {
+    const res = await fetch(execUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command }),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // Proxy not available, fall back to RunPod run endpoint
+  }
+
+  // Fallback: use RunPod's serverless exec API
+  const res = await fetch(`https://api.runpod.io/v2/${podId}/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getApiKey()}`,
+    },
+    body: JSON.stringify({ input: { command } }),
+  });
+
+  if (!res.ok) throw new Error(`runCommand failed: ${res.status}`);
+  const data = await res.json();
+  return { stdout: data.output || "", stderr: "", exitCode: data.status === "COMPLETED" ? 0 : 1 };
+}
+
 // ---------- GPU types for easy reference ----------
 
 export const GPU_PRESETS = {

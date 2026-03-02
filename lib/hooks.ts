@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { DbJob, DbPodInstance, DbTemplate, DbJobEvent } from "@/lib/db-types";
+import type { DbJob, DbPodInstance, DbTemplate, DbJobEvent, DbModel } from "@/lib/db-types";
 
 // ─── Jobs ───
 
@@ -153,4 +153,73 @@ export function useTemplates() {
   }, []);
 
   return { templates, loading };
+}
+
+// ─── Models ───
+
+export function useModels() {
+  const [models, setModels] = useState<DbModel[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchModels = useCallback(async () => {
+    const res = await fetch("/api/models");
+    if (res.ok) setModels(await res.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchModels();
+    const ch = supabase
+      .channel("models-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "models_registry" }, () => fetchModels())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [fetchModels]);
+
+  const importModel = async (url: string) => {
+    const res = await fetch("/api/models/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (res.ok) fetchModels();
+    return { data, ok: res.ok, status: res.status };
+  };
+
+  const downloadModel = async (modelId: string, podId?: string) => {
+    const res = await fetch(`/api/models/${modelId}/download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pod_id: podId }),
+    });
+    const data = await res.json();
+    if (res.ok) fetchModels();
+    return { data, ok: res.ok, status: res.status };
+  };
+
+  return { models, loading, importModel, downloadModel, refetch: fetchModels };
+}
+
+// ─── Workflow Import ───
+
+export function useWorkflowImport() {
+  const [importing, setImporting] = useState(false);
+
+  const importWorkflow = async (workflow: Record<string, unknown>, name?: string, description?: string) => {
+    setImporting(true);
+    try {
+      const res = await fetch("/api/workflows/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflow, name, description }),
+      });
+      const data = await res.json();
+      return { data, ok: res.ok, status: res.status };
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return { importWorkflow, importing };
 }
