@@ -112,7 +112,16 @@ export function usePods() {
       .channel("pods-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "pod_instances" }, () => fetchPods())
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    // Poll non-terminal pods every 15s for fast bootstrap feedback
+    const pollInterval = setInterval(async () => {
+      try { await fetch("/api/pods/poll"); } catch {}
+    }, 15000);
+
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(pollInterval);
+    };
   }, [fetchPods]);
 
   const createPod = async (options?: { gpu?: string; name?: string; image?: string }) => {
@@ -157,8 +166,22 @@ export function useTemplates() {
 
 // ─── Models ───
 
+export interface ModelEntry {
+  id: string;
+  name: string;
+  filename: string;
+  target_folder: string;
+  model_type: string | null;
+  base_model: string | null;
+  is_cached: boolean;
+  download_status: string;
+  download_error: string | null;
+  preview_url: string | null;
+  size_bytes: number | null;
+}
+
 export function useModels() {
-  const [models, setModels] = useState<DbModel[]>([]);
+  const [models, setModels] = useState<ModelEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchModels = useCallback(async () => {
@@ -183,15 +206,15 @@ export function useModels() {
       body: JSON.stringify({ url }),
     });
     const data = await res.json();
-    if (res.ok) fetchModels();
-    return { data, ok: res.ok, status: res.status };
+    if (res.ok || res.status === 200) fetchModels();
+    return { data, ok: res.ok || res.status === 200, status: res.status };
   };
 
   const downloadModel = async (modelId: string, podId?: string) => {
     const res = await fetch(`/api/models/${modelId}/download`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pod_id: podId }),
+      body: JSON.stringify(podId ? { pod_id: podId } : {}),
     });
     const data = await res.json();
     if (res.ok) fetchModels();
@@ -204,22 +227,48 @@ export function useModels() {
 // ─── Workflow Import ───
 
 export function useWorkflowImport() {
-  const [importing, setImporting] = useState(false);
-
   const importWorkflow = async (workflow: Record<string, unknown>, name?: string, description?: string) => {
-    setImporting(true);
+    const res = await fetch("/api/workflows/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workflow, name, description }),
+    });
+    return { data: await res.json(), ok: res.ok, status: res.status };
+  };
+
+  return { importWorkflow };
+}
+
+// ─── Workflow Run (the core product action) ───
+
+export function useWorkflowRun() {
+  const [running, setRunning] = useState(false);
+  const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
+
+  const runWorkflow = async (
+    slug: string,
+    params: Record<string, unknown>,
+    options?: { wait?: boolean; pod_id?: string }
+  ) => {
+    setRunning(true);
+    setLastResult(null);
     try {
-      const res = await fetch("/api/workflows/import", {
+      const res = await fetch(`/api/workflows/${slug}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workflow, name, description }),
+        body: JSON.stringify({ ...params, ...options }),
       });
       const data = await res.json();
+      setLastResult(data);
       return { data, ok: res.ok, status: res.status };
+    } catch (err) {
+      const errorResult = { error: err instanceof Error ? err.message : "Run failed" };
+      setLastResult(errorResult);
+      return { data: errorResult, ok: false, status: 0 };
     } finally {
-      setImporting(false);
+      setRunning(false);
     }
   };
 
-  return { importWorkflow, importing };
+  return { runWorkflow, running, lastResult };
 }

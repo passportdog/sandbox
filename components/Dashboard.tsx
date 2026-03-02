@@ -9,49 +9,55 @@ import { TemplatesGrid } from "@/components/TemplatesGrid";
 import { TemplateRunPanel } from "@/components/TemplateRunPanel";
 import { JobsSection } from "@/components/JobsSection";
 import { ModelsSection } from "@/components/ModelsSection";
-import type { ImportReport } from "@/components/ImportPanel";
+import type { ImportReport } from "@/lib/import-types";
 
 export function Dashboard() {
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
-  const [importReport, setImportReport]     = useState<ImportReport | null>(null);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
+
+  const handleTemplateSelect = (id: string) => {
+    setActiveTemplate((prev) => (prev === id ? null : id));
+  };
+
+  const handleImportReport = (report: ImportReport) => {
+    setImportReport(report);
+    setTimeout(() => {
+      document.getElementById("import-report")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  };
 
   return (
     <>
-      <AmbientBackground />
+      {/* Fixed animated background — stays behind content as page scrolls */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <AmbientBackground />
+      </div>
 
-      <div className="relative z-10 min-h-screen flex flex-col">
+      {/* Scrollable page */}
+      <div className="relative z-10 min-h-screen">
         <HeaderBar />
 
-        <div className="flex-1 max-w-[960px] w-full mx-auto px-6 py-8 space-y-8 pb-16">
-          {/* ① Import Anything */}
-          <ImportPanel onReport={(r) => { setImportReport(r); }} />
+        <div className="max-w-[960px] mx-auto px-4 sm:px-6 py-8 space-y-8 pb-24">
+          {/* Hero: Import Panel */}
+          <ImportPanel onReport={handleImportReport} />
 
-          {/* ② Analysis result */}
+          {/* Import analysis results */}
           {importReport && (
-            <ImportReportCard
-              report={importReport}
-              onDismiss={() => setImportReport(null)}
-            />
+            <div id="import-report">
+              <ImportReportCard report={importReport} />
+            </div>
           )}
 
-          {/* ③ Templates */}
-          <TemplatesGrid
-            selectedId={activeTemplate}
-            onSelect={setActiveTemplate}
-          />
+          {/* Templates grid */}
+          <TemplatesGrid onSelect={handleTemplateSelect} selectedId={activeTemplate} />
 
-          {/* ④ Run panel (shown when a template is selected) */}
-          {activeTemplate && (
-            <TemplateRunPanel
-              templateId={activeTemplate}
-              onClose={() => setActiveTemplate(null)}
-            />
-          )}
+          {/* Inline run panel — appears when a template is selected */}
+          {activeTemplate && <TemplateRunPanel templateId={activeTemplate} />}
 
-          {/* ⑤ Jobs */}
+          {/* Active jobs + history */}
           <JobsSection />
 
-          {/* ⑥ Model registry */}
+          {/* Models registry (collapsible) */}
           <ModelsSection />
         </div>
       </div>

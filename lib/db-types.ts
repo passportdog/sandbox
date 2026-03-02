@@ -167,6 +167,7 @@ export const STEP_DISPLAY: Record<string, { icon: string; label: string }> = {
   "job.canceled":       { icon: "solar:stop-circle-linear",    label: "Job canceled" },
   "job.retry":          { icon: "solar:refresh-circle-linear", label: "Retrying" },
   "queue.failed":       { icon: "solar:close-circle-linear",   label: "Queue failed" },
+  "model.check":        { icon: "solar:database-linear",       label: "Model check" },
 };
 
 /** Is this status an active/in-progress state? */

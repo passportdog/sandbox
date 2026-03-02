@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+.env.local
+.env.local.example
+tsconfig.tsbuildinfo
+FRONTEND_AGENT_PROMPT.md

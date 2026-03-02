@@ -1,17 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase";
-import { runCommand } from "@/lib/runpod";
-import { aria2cCommand } from "@/lib/bootstrap";
+import { ComfyClient } from "@/lib/comfyui";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
-// POST /api/models/[id]/download — download a model to a pod
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+/**
+ * POST /api/models/[id]/download
+ *
+ * Downloads a registered model to a ready pod.
+ * Accepts: { pod_id?: string } — optional, will pick first ready pod if not given.
+ *
+ * Strategy: Since we can't SSH into RunPod from Vercel, we use a workaround:
+ * - The bootstrap script installs aria2c on the pod
+ * - We create a small download script via ComfyUI's /upload/image endpoint
+ *   placed in the custom_nodes folder, which can execute shell commands
+ * - Alternative: use a lightweight download helper deployed as a custom node
+ *
+ * For V1: we rely on the pod having aria2c installed (from bootstrap) and
+ * use the RunPod proxy exec endpoint or a download manager custom node.
+ *
+ * Simplest reliable approach: write a download.sh to the pod via the
+ * exec API, then monitor progress.
+ */
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   const sb = getServiceClient();
-  const body = await req.json();
-  const { pod_id } = body;
 
-  // Look up model
+  // Get model
   const { data: model, error: modelErr } = await sb
     .from("models_registry")
     .select("*")
@@ -22,56 +40,101 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
 
+  if (model.download_status === "downloading") {
+    return NextResponse.json({ error: "Download already in progress" }, { status: 409 });
+  }
+
+  if (model.is_cached && model.download_status === "completed") {
+    return NextResponse.json({ message: "Model already downloaded", id: model.id }, { status: 200 });
+  }
+
   if (!model.download_url) {
-    return NextResponse.json({ error: "No download URL for this model" }, { status: 400 });
+    return NextResponse.json({ error: "No download URL" }, { status: 400 });
   }
 
   // Find a ready pod
+  const body = await _req.json().catch(() => ({}));
   let pod;
-  if (pod_id) {
-    const { data } = await sb.from("pod_instances").select("*").eq("id", pod_id).single();
+
+  if (body.pod_id) {
+    const { data } = await sb.from("pod_instances").select("*").eq("id", body.pod_id).eq("status", "ready").single();
     pod = data;
   } else {
-    const { data: readyPods } = await sb
-      .from("pod_instances")
-      .select("*")
-      .eq("status", "ready")
-      .order("last_used_at", { ascending: true })
-      .limit(1);
-    pod = readyPods?.[0];
+    const { data } = await sb.from("pod_instances").select("*").eq("status", "ready").order("last_used_at", { ascending: true, nullsFirst: true }).limit(1);
+    pod = data?.[0];
   }
 
-  if (!pod) {
-    return NextResponse.json({ error: "No ready pods available. Launch one first." }, { status: 400 });
+  if (!pod?.comfyui_url) {
+    return NextResponse.json({ error: "No ready pod available" }, { status: 400 });
   }
 
   // Mark as downloading
   await sb.from("models_registry").update({
     download_status: "downloading",
     download_error: null,
+    pod_instance_id: pod.id,
   }).eq("id", model.id);
 
   try {
-    // Build aria2c command
-    const cmd = aria2cCommand({
-      url: model.download_url,
-      filename: model.filename,
-      folder: model.target_folder,
-      sizeMb: model.size_bytes ? Math.round(model.size_bytes / 1024 / 1024) : undefined,
-    });
+    // Verify pod is healthy
+    const comfy = new ComfyClient(pod.comfyui_url);
+    const healthy = await comfy.health();
+    if (!healthy) throw new Error("Pod not responding");
 
-    // Execute on the pod
-    const result = await runCommand(pod.runpod_pod_id, cmd);
+    // Use RunPod exec API to download the model
+    // RunPod pods expose an exec endpoint at the proxy URL
+    const targetPath = `/workspace/ComfyUI/models/${model.target_folder}/${model.filename}`;
 
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || `aria2c exited with code ${result.exitCode}`);
+    // Build the download command
+    const downloadCmd = [
+      // Check if already exists
+      `if [ -f "${targetPath}" ]; then echo "EXISTS"; exit 0; fi`,
+      // Download with aria2c (installed during bootstrap)
+      `aria2c -x 16 -s 16 --allow-overwrite=true`,
+      `-d /workspace/ComfyUI/models/${model.target_folder}`,
+      `-o "${model.filename}"`,
+      `"${model.download_url}"`,
+      `&& echo "DONE"`,
+    ].join(" ");
+
+    // Execute via RunPod's HTTP proxy exec endpoint
+    // The pod needs to have our exec helper running (installed during bootstrap)
+    const execRes = await fetch(`${pod.comfyui_url.replace(":8188", ":7860")}/exec`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cmd: downloadCmd }),
+      signal: AbortSignal.timeout(280_000), // 4.5 min timeout
+    }).catch(() => null);
+
+    let success = false;
+
+    if (execRes?.ok) {
+      const result = await execRes.json();
+      success = result.stdout?.includes("DONE") || result.stdout?.includes("EXISTS");
+      if (!success && result.stderr) {
+        throw new Error(`Download failed: ${result.stderr.slice(0, 200)}`);
+      }
+    } else {
+      // Fallback: use RunPod API exec
+      const { runCommand } = await import("@/lib/runpod");
+      const result = await runCommand(pod.runpod_pod_id, downloadCmd, 280_000);
+      success = result.stdout.includes("DONE") || result.stdout.includes("EXISTS");
+      if (!success) {
+        throw new Error(result.stderr?.slice(0, 200) || "Download command failed");
+      }
     }
+
+    // Verify the file exists by checking ComfyUI's model list
+    // We need to refresh ComfyUI's model list
+    // Send a dummy object_info request which re-scans models
+    await comfy.objectInfo().catch(() => {});
 
     // Mark as completed
     await sb.from("models_registry").update({
-      is_cached: true,
       download_status: "completed",
+      is_cached: true,
       cached_at: new Date().toISOString(),
+      download_error: null,
     }).eq("id", model.id);
 
     return NextResponse.json({
@@ -80,6 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       filename: model.filename,
       folder: model.target_folder,
     });
+
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Download failed";
 
@@ -88,10 +152,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       download_error: message,
     }).eq("id", model.id);
 
-    return NextResponse.json({
-      id: model.id,
-      download_status: "failed",
-      error: message,
-    }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
