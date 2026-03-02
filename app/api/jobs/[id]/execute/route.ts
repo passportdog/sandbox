@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase";
 import { ComfyClient, patchWorkflow } from "@/lib/comfyui";
 import { JobEngine, EVENT_STEPS, TIMEOUTS, withTimeout, withRetry } from "@/lib/engine";
+import { listPodModels } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 min Vercel timeout
@@ -94,6 +95,20 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
     // Assign pod to job
     await sb.from("jobs").update({ pod_instance_id: pod.id }).eq("id", jobId);
+
+    // Check if required models are available
+    const requiredModels = (template as Record<string, unknown>).required_models as string[] | undefined;
+    if (requiredModels?.length && pod.comfyui_url) {
+      const availableModels = await listPodModels(pod.comfyui_url as string);
+      const missing = requiredModels.filter((m) => !availableModels.some((a) => a.includes(m) || m.includes(a)));
+      if (missing.length > 0) {
+        await engine.log(jobId, "model.check", { required: requiredModels, available: availableModels, missing });
+        // Don't fail — model might be under a different name or still loading
+        // Just log the warning
+      } else {
+        await engine.log(jobId, "model.check", { required: requiredModels, all_present: true });
+      }
+    }
 
     // Patch workflow
     const workflow = patchWorkflow(
