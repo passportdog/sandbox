@@ -6,6 +6,7 @@ import { useJobs, usePods } from "@/lib/hooks";
 import { JOB_STATUS_CONFIG, STEP_DISPLAY, isActive, isFailed } from "@/lib/db-types";
 import type { DbJob, DbJobEvent } from "@/lib/db-types";
 import { AmbientBackground } from "@/components/AmbientBackground";
+import { VaultPanel } from "@/components/VaultPanel";
 
 function timeAgo(d: string) {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -86,6 +87,7 @@ export function Dashboard() {
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState("");
+  const [vaultOpen, setVaultOpen] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
 
   const readyPods = pods.filter((p) => p.status === "ready");
@@ -142,7 +144,7 @@ export function Dashboard() {
           <NavBtn icon="solar:home-angle-linear" label="Home" />
           <NavBtn icon="solar:chat-round-line-linear" label="Threads" active />
           <NavBtn icon="solar:play-circle-linear" label="Runs" />
-          <NavBtn icon="solar:safe-square-linear" label="Vault" />
+          <NavBtn icon="solar:safe-square-linear" label="Vault" onClick={() => setVaultOpen(true)} />
           <div className="w-full h-px bg-neutral-100 mt-2 mb-2" />
           <NavBtn icon="solar:settings-linear" label="Settings" />
         </div>
@@ -385,15 +387,17 @@ export function Dashboard() {
           </button>
         ))}
       </nav>
+
+      <VaultPanel open={vaultOpen} onClose={() => setVaultOpen(false)} />
     </>
   );
 }
 
 // ─── Sub-components ───
 
-function NavBtn({ icon, label, active }: { icon: string; label: string; active?: boolean }) {
+function NavBtn({ icon, label, active, onClick }: { icon: string; label: string; active?: boolean; onClick?: () => void }) {
   return (
-    <button className={`group grid place-items-center w-10 h-10 rounded-full transition-all relative cursor-pointer ${active ? "text-neutral-900 bg-neutral-100 shadow-sm border border-neutral-200/50" : "text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100/80"}`}>
+    <button onClick={onClick} className={`group grid place-items-center w-10 h-10 rounded-full transition-all relative cursor-pointer ${active ? "text-neutral-900 bg-neutral-100 shadow-sm border border-neutral-200/50" : "text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100/80"}`}>
       <Icon icon={icon} width={20} height={20} />
       <span className="absolute left-14 bg-neutral-900 text-white text-xs px-2.5 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none font-geist-mono shadow-sm">{label}</span>
     </button>
